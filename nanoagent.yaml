@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: citibike-nearby
 name: NYC Bike Station Finder
-version: 0.1.0
+version: 0.2.0
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -11,15 +11,33 @@ runtime > nanoagent.plugin.v0001.RuntimeConfig:
 
 permissions > nanoagent.plugin.v0001.PermissionsConfig:
   network > nanoagent.plugin.v0001.NetworkConfig:
-    hosts: []
+    hosts: [gbfs.citibikenyc.com, gbfs.lyft.com]
   filesystem > nanoagent.plugin.v0001.FilesystemConfig:
-    write: []
+    write: [workspace]
 
 tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
   find_nearby_stations:
     description: Find all installed stations renting at least one bike within 100 yards in the supplied snapshot
+  get_live_snapshot:
+    description: Fetch official Citi Bike feeds once per location per run; return the saved snapshot on subsequent calls
 
 tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  find-live-stations:
+    description: Fetch Citi Bike availability automatically and find stations within 100 yards of NYC coordinates
+    runner: agent
+    tools: [get_live_snapshot, find_nearby_stations]
+    reference: null
+    instructions: |-
+      This is the default task for requests about current Citi Bike availability.
+      The user supplies only longitude and latitude, never a station snapshot.
+      Call get_live_snapshot with the task's exact coordinates to read the official
+      feeds captured on the first call. Pass those coordinates and its entire snapshot
+      to find_nearby_stations. Submit that tool's complete stations list unchanged.
+      You may inspect the captured data, but must not invent or omit stations.
+      Results describe the captured feed timestamps, not guaranteed availability
+      on arrival. Do not ask the user to obtain the feed. If coordinates are unknown,
+      ask for coordinates or confirmation of an approximate location; this plugin
+      does not geocode place names. Never claim a guessed location is verified.
   find-nearby-stations:
     description: List every station within 100 yards that is open for rentals and has an available bike
     runner: tool

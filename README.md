@@ -1,206 +1,195 @@
 # NYC Bike Station Finder
 
-A `nanoagent.plugin/v0001` plugin for this task:
-
-> Given longitude and latitude coordinates in New York City and a fixed Citi Bike
-> feed snapshot, list every station within 100 yards that is open for rentals and
-> has at least one available bike. Return each station's ID, name, coordinates,
-> and available-bike count.
+A `nanoagent.plugin/v0001` plugin that fetches official Citi Bike station data and
+finds every station within 100 yards of NYC coordinates that is installed, renting,
+and has at least one available bike. A deterministic verifier checks the complete
+answer against the captured observations. No API key is required by this plugin;
+the host's conversational agent uses its own configured model credentials.
 
 ## Tools
 
-| Tool | Does | Code |
+| Tool | Purpose |
+|---|---|
+| `get_live_snapshot` | Fetch official GBFS feeds once per location per task run, save raw observations, and return normalized data for nearby stations |
+| `find_nearby_stations` | Calculate the complete matching station list from coordinates and a fixed snapshot |
+
+| Task | Runner | Input |
 |---|---|---|
-| `find_nearby_stations` | Returns every matching station in the supplied snapshot | `src/plugin/nearby.py` |
+| `find-live-stations` | `agent`, using both tools; reference `null` | Longitude and latitude only; default for current availability |
+| `find-nearby-stations` | `tool`, using `find_nearby_stations`; reference `null` | Coordinates and a supplied snapshot; offline replay |
 
-### Tasks
+## Use in RUSH Lab
 
-| Task | Runner | Success condition |
-|---|---|---|
-| `find-nearby-stations` | `tool`, with `find_nearby_stations`; reference `null` | Complete list and all fields match the input and rules below |
+Install/update version 0.2.0, then request:
 
-### Exact specification
+> Use find-live-stations at latitude 40.7359, longitude -73.9911.
 
-- Input: `NearbyInput` in `contract.py`: named `longitude` and `latitude` fields
-  and an entire typed `snapshot`. Coordinates are WGS84 decimal degrees. An NYC
-  query location is a task precondition; numeric ranges are checked, but
-  administrative city membership is not geofenced.
-- The normalized snapshot contains station information and status, their separate
-  feed timestamps, and an explicit source label. This pair is authoritative even
-  if timestamps differ. Historic snapshots are valid; there is no freshness test.
-- Join by `station_id`. Both lists require unique, nonempty IDs and identical ID
-  sets. Missing counterparts, duplicate IDs, blank names, invalid coordinates,
+These are approximate coordinates for the Union Square example, not a verified
+geocoding result. The agent should never request station data from the user for
+this task. It calls `get_live_snapshot`, passes its snapshot and the original
+coordinates to `find_nearby_stations`, and submits the resulting station list.
+It can inspect the returned data; the verifier decides whether its answer is correct.
+
+This plugin does not geocode addresses or landmarks. If only a place name is
+supplied, the agent should ask for coordinates or confirmation of an approximate
+location. Queries are within 100 yards of a point, not an entire neighborhood.
+
+Each fresh live task fetches official GBFS 2.3 discovery, station information,
+and station status. The tool returns all stations within the search radius,
+including closed or empty stations, while retaining the full feeds in the workspace
+for independent completeness checks. Repeated snapshot calls for the same coordinates in that run
+reuse the saved capture; they do not refresh it. Timestamps describe the feed
+observations, not guaranteed availability on arrival. Network or malformed-feed
+errors fail explicitly rather than returning a substitute snapshot or empty answer.
+
+## Exact specification
+
+- Coordinates are named `longitude` and `latitude` in WGS84 decimal degrees. NYC
+  city membership is a caller precondition; numeric ranges are validated without
+  a city boundary geofence.
+- Snapshot information and status have separate Unix timestamps and an explicit
+  source (`citibike-gbfs` or `synthetic`). The observed pair is authoritative even
+  when timestamps differ. Replay accepts historic data without a freshness test.
+- Join by `station_id`. Both lists require unique nonempty IDs and identical ID
+  sets. Missing counterparts, duplicates, blank names, invalid coordinates,
   negative timestamps, and negative bike counts fail. Two empty lists are valid.
-- Open for rentals means `is_installed` and `is_renting` are both true, with
-  `num_bikes_available >= 1`. Return availability does not affect bike rental.
-  Counts include all available bike types.
-- Use Haversine great-circle distance with Earth radius **6,371,008.8 meters**.
-  Include distance **<= 91.44 meters**, exactly 100 international yards. Compare
-  unrounded binary64 values with no additional radius tolerance.
-- Output: `NearbyOutput.stations`, sorted lexicographically by `station_id`,
-  without duplicates. Each record contains `station_id`, `name`, `latitude`,
-  `longitude`, and `num_bikes_available`, copied exactly from the snapshot.
-  No matches means `{"stations": []}`.
-- Failures raise exceptions/MCP errors. There are no network calls, writes,
-  substitute snapshots, or silent omissions during search or verification.
+- Eligibility is `is_installed` and `is_renting` and `num_bikes_available >= 1`.
+  Return availability does not affect rental eligibility. Counts include all bike types.
+- Use Haversine distance with Earth radius **6,371,008.8 meters** and include
+  distance **<= 91.44 meters** (100 international yards). Compare unrounded binary64
+  values without additional radius tolerance.
+- Return `NearbyOutput.stations`, sorted lexicographically by `station_id`, without
+  duplicates. Copy `station_id`, `name`, `latitude`, `longitude`, and
+  `num_bikes_available` exactly from the snapshot. No matches is `{"stations": []}`.
 
-The host's typed arguments contain the fixed snapshot, so a reference tool is
-unnecessary. The `tool` runner computes the result; RUSH's conversational agent
-can invoke the task. This evaluates spatial retrieval, not model reasoning.
+## Deterministic verification
 
-### Verification
+The verifier uses no model, network, clock, or runtime implementation imports.
+For the live task it reads the run's saved raw information/status feeds, normalizes
+fields independently, validates the data, independently calculates distances, and
+compares every station and field. Missing evidence, omissions, extras, duplicates,
+changed fields, or incorrect ordering fail. Snapshot-tool output must also match
+these observations exactly. The replay task checks its supplied snapshot directly.
+NanoAgent validates contract types, isolates verification, and executes it twice.
 
-`verifier/nearby.py` independently validates input, joins records, calculates
-geographic distances, and compares the entire expected list and every field.
-It imports only `math`, never the implementation. Omissions, extras, duplicates,
-changed fields, and incorrect ordering fail with score 0. Correct results score 1.
-
-`verifier/__init__.py` defines `verify_input`, `verify_output`, and `verify_task`.
-NanoAgent validates types from `contract.py` first, isolates the verifier,
-disables networking, and executes it twice to check repeatability. The task needs
-no network or filesystem-write permissions, credentials, or environment variables.
+The saved capture is evidence produced by trusted plugin code, not a cryptographic
+attestation of the external feed. The verifier proves correctness relative to those
+observations; it cannot prove provider accuracy, geocoding accuracy, or present-day
+availability. The live task exposes no arbitrary file-writing or shell tool to its
+agent. Its only writes are capture records within its run workspace.
 
 ## Layout
 
 ```text
-nanoagent.yaml             Typed manifest, permissions, task and tool registration
-contract.py               Every typed input and output declaration
-README.md                 Specification and reproducible commands
+nanoagent.yaml             Typed manifest, network/workspace permissions, tasks/tools
+contract.py               Typed input/output declarations
 LICENSE                   MIT license for plugin code
 pyproject.toml, uv.lock    Independent package and locked dependencies
-.gitignore, .env           Standard exclusions; empty environment requirements
 src/plugin/__main__.py    Typed MCP stdio server
+src/plugin/live.py        Run-scoped official capture and snapshot retrieval
+src/plugin/capture.py     GBFS normalization and optional external capture command
 src/plugin/nearby.py      Station search and input checks
-src/plugin/capture.py     Optional real GBFS capture and normalization command
-tests/                    Search, verifier, contract, and capture tests
-tests/fixtures/           Synthetic input and handwritten expected output
-verifier/                 Independent deterministic checks; Python files only
+verifier/                 Independent deterministic checks and saved-feed replay
+tests/                    Synthetic fixtures, search/capture/verifier tests
 ui/                       Standard NanoAgent schema renderer
 product/                  Marketplace description and original generic bike icon
 ```
 
-`tests/fixtures/mixed.json` has six **synthetic** stations near a real NYC point;
-it is not a historical feed. Expected matches are IDs `10` and `2`, in that
-order. Others are outside the radius, empty, closed, or uninstalled. These
-fixtures never claim actual availability.
+The live task needs network access only to `gbfs.citibikenyc.com` and
+`gbfs.lyft.com`, and write access only to `workspace`. The replay calculation
+and verifier perform no network requests. `.env` declares no required variables.
 
-Keep run inputs, validation logs, packages, and report evidence **outside this
-repository**. The assignment puts evidence in the report, and the publishing
-checker rejects arbitrary extra top-level folders.
+Keep validation logs, report evidence, packages, and captured datasets outside
+this repository. The publishing checker rejects arbitrary extra top-level folders.
+`tests/fixtures/mixed.json` is synthetic; expected IDs are `10` and `2` in that order.
+It is not a historical observation or a claim of current availability.
 
 ## Develop and run
 
-Run commands from this plugin's root. Install Git, uv, and Python 3.12 or newer.
-The scaffold requires `requires-python = ">=3.12"`; `uv.lock` pins the resolved
-dependencies and SlimConfig Git revision.
+Use Python 3.12+, Git, and uv. From this plugin's root:
 
 ```bash
 uv sync --frozen --extra dev
 uv run --frozen pytest -v
 uv run --frozen ruff check .
-```
-
-### Run the fixture through NanoAgent
-
-Prepare the adjacent checkout if its environment does not exist:
-
-```bash
+uv run --frozen ruff format --check .
 uv sync --project ../nanoagent/nanoagent
+uv run --project ../nanoagent/nanoagent nanoagent plugin inspect "$PWD"
 ```
 
-Create an external YAML run configuration. The result folder must be new:
+For offline replay, create an external YAML run configuration and a NEW run folder:
 
 ```bash
 mkdir -p ../citibike-nearby-evidence
-cat > ../citibike-nearby-evidence/fixture.yaml <<EOF
+cat > ../citibike-nearby-evidence/fixture.yaml <<EOF_CONFIG
 _ > nanoagent.cli.plugin.PluginRunConfig:
 plugin: "$PWD"
 task: find-nearby-stations
 arguments: "$PWD/tests/fixtures/mixed.json"
 inputs: []
 timeout: 60.0
-EOF
-uv run --project ../nanoagent/nanoagent nanoagent plugin inspect "$PWD"
+EOF_CONFIG
 uv run --project ../nanoagent/nanoagent nanoagent plugin run \
   config="$PWD/../citibike-nearby-evidence/fixture.yaml" \
-  home="$PWD/../citibike-nearby-evidence/fixture-run"
+  home="$PWD/../citibike-nearby-evidence/fixture-replay"
 ```
 
-A run writes `config.yaml`, `metadata.json`, `run.log`, `result.json`,
-`verdict.json`, and `workspace/`. `result.json.output` must equal
-`tests/fixtures/expected.json`. The command exits nonzero unless verification
-passes. To change coordinates or snapshot, prepare another input JSON and point
-the YAML run config's `arguments` at it. Configuration is YAML; JSON files are
-typed task data as required by NanoAgent's launcher.
+The live task additionally needs the host's agent configuration; use the RUSH Lab
+UI with its model configured. Its typed task arguments are simply:
 
-### Capture a real fixed snapshot
+```json
+{"longitude": -73.9911, "latitude": 40.7359}
+```
 
-The optional helper is a separate preparation command with network access; it
-is never called by the installed task or verifier. It discovers official GBFS
-2.3 feeds, changes `lat`/`lon` to named fields, and normalizes boolean or integer
-0/1 flags. Other flag values fail. Extra GBFS fields unrelated to the task are
-excluded from normalized arguments. Raw responses remain with external evidence.
+For an external capture without an agent:
 
 ```bash
-cat > ../citibike-nearby-evidence/capture.yaml <<'EOF'
+cat > ../citibike-nearby-evidence/capture.yaml <<'EOF_CONFIG'
 _ > plugin.capture.CaptureConfig:
-longitude: -73.989
-latitude: 40.741
+longitude: -73.9911
+latitude: 40.7359
 discovery_url: https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json
 timeout_seconds: 30.0
-EOF
+EOF_CONFIG
 uv run --frozen python -m plugin.capture \
   config="$PWD/../citibike-nearby-evidence/capture.yaml" \
-  home="$PWD/../citibike-nearby-evidence/capture-run"
+  home="$PWD/../citibike-nearby-evidence/new-capture-run"
 ```
 
-Use `capture-run/arguments.json` as a subsequent task run's `arguments`. Capture
-fails on network errors, malformed feeds, unsupported versions, or mismatched ID
-sets. It never retries, discards unmatched rows, or uses substitute data. Keep
-the same captured arguments for repeatable replay.
+Use `arguments.json` from this capture as the replay task's input. GBFS integer
+0/1 flags normalize to booleans; other flag values and unsupported versions fail.
+There are no retries or substitute feeds. Mismatched station ID sets fail strictly.
 
-### Publication and desktop validation
+## Publish and validate in the desktop app
 
-1. Run tests, lint, inspection, and a task run; preserve logs outside the repo.
-2. Push this independent repository to your own public GitHub account. Keep live
-   snapshots out of the repository as a standalone dataset.
-3. Publish with your authenticated CLI:
+1. Run tests, lint, formatting, inspection, packaging, and task checks; preserve
+   evidence outside the repository.
+2. Push this independent repository to your public GitHub account.
+3. Publish using your authenticated CLI:
    `rush publish https://rush-lab.org https://github.com/YOUR_USERNAME/citibike-nearby`.
-4. Install the published plugin in RUSH Lab's desktop app and run the supplied
-   synthetic task input. Record its result and displayed verifier verdict.
-   The standard page/schema renderer requires no host changes. Changes to
-   NanoAgent, the relay, or the page kit require a desktop rebuild and check.
-5. Submit its GitHub URL and add the evidence to your milestone report. This
-   plugin is one of the five required independent tasks.
+4. Update/install version 0.2.0 in RUSH Lab. Run the live task with coordinates,
+   confirm no user snapshot is requested, and record the result and verifier verdict.
+5. Submit the public GitHub URL and incorporate evidence into your milestone report.
 
-To produce an inspected package:
+To package:
 
 ```bash
 uv run --project ../nanoagent/nanoagent nanoagent plugin pack \
-  "$PWD" "$PWD/../citibike-nearby-evidence/citibike-nearby.tar.gz"
+  "$PWD" "$PWD/../citibike-nearby-evidence/citibike-nearby-v0.2.0.tar.gz"
 ```
 
-### Data and report questions
+Existing evidence for version 0.1.0 does not validate this version. Desktop UI
+validation and marketplace publication must be recorded separately for 0.2.0.
 
-The code license does not license third-party data. Real captures use
-[Citi Bike System Data](https://citibikenyc.com/system-data) and its public
-[GBFS discovery feed](https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json).
-Review the [Data Sharing Policy](https://citibikenyc.com/data-sharing-policy)
-before redistribution: it allows source material in noncommercial reports/studies
-and restricts standalone dataset distribution. The icon is original generic
-artwork; there is no operator logo, affiliation, or endorsement.
+## Data and limitations
 
-- **Objective verification:** a precise predicate over fixed typed data and
-  complete-list/field comparison decide correctness without a model.
-- **Reproducibility:** synthetic fixtures, handwritten expectations, a committed
-  lockfile, and YAML run instructions support offline replay. A snapshot's source
-  label records provenance claimed by its provider; it is not authentication.
-- **Incorrect and boundary outputs:** tests cover missing/malformed values,
-  wrong results, omissions, extras, duplicate/unsorted IDs, eligibility, empty
-  results, invalid coordinates, and the inclusive radius. Exact-radius arithmetic
-  is isolated at the equator; NYC cases cover just inside and outside the boundary.
-- **Limitations:** spherical distance differs from walking distance; feed locations
-  and counts may be wrong; feed observations are not atomic; changing station sets
-  can fail strict capture; historic snapshots are accepted intentionally; NYC city
-  membership is a caller precondition; binary64 rounding applies at the boundary.
-  Packaging inspection alone proves neither task correctness nor publication.
+Official sources: [Citi Bike System Data](https://citibikenyc.com/system-data),
+[GBFS discovery](https://gbfs.citibikenyc.com/gbfs/2.3/gbfs.json), and
+[Data Sharing Policy](https://citibikenyc.com/data-sharing-policy). The MIT code
+license does not license third-party data. Review the policy before redistributing
+captures; keep live snapshots out of the public code repository.
+
+Spherical distance differs from walking distance; feeds may be inaccurate or
+observed at different times; station-set changes may cause strict capture failure;
+and binary64 rounding applies at the radius boundary. The icon is original generic
+bike artwork, without an operator logo or claim of affiliation.

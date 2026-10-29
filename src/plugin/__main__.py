@@ -14,12 +14,16 @@ from slimconfig import build_output, output_schema, plain_output
 
 from contract import TOOLS, Tool
 from plugin import find_nearby_stations
+from plugin.live import capture_live_snapshot
 
 server = Server("citibike-nearby")
 # NanoAgent names the one folder this plugin may write to.
 WORKSPACE_ENV = "NANOAGENT_WORKSPACE"
 # Each tool's implementation: (its input, the workspace) -> its output, as contract.TOOLS types them.
-IMPLEMENTATIONS = {Tool.FIND_NEARBY_STATIONS: find_nearby_stations}
+IMPLEMENTATIONS = {
+    Tool.FIND_NEARBY_STATIONS: find_nearby_stations,
+    Tool.GET_LIVE_SNAPSHOT: capture_live_snapshot,
+}
 
 
 @server.list_tools()

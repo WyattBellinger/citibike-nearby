@@ -11,6 +11,16 @@ def valid_coordinates(latitude, longitude):
     return math.isfinite(latitude) and math.isfinite(longitude) and -90 <= latitude <= 90 and -180 <= longitude <= 180
 
 
+def distance_meters(latitude, longitude, station):
+    a = math.sin(math.radians(station.latitude - latitude) / 2) ** 2
+    a += (
+        math.cos(math.radians(latitude))
+        * math.cos(math.radians(station.latitude))
+        * math.sin(math.radians(station.longitude - longitude) / 2) ** 2
+    )
+    return 12_742_017.6 * math.asin(math.sqrt(max(0.0, min(1.0, a))))
+
+
 def check_input(value):
     if not valid_coordinates(value.latitude, value.longitude):
         return verdict(False, "query coordinates must be finite WGS84 values")
@@ -45,13 +55,7 @@ def check_result(arguments, output):
         if not status.is_installed or not status.is_renting or status.num_bikes_available == 0:
             continue
         station = information[status.station_id]
-        a = math.sin(math.radians(station.latitude - arguments.latitude) / 2) ** 2
-        a += (
-            math.cos(math.radians(arguments.latitude))
-            * math.cos(math.radians(station.latitude))
-            * math.sin(math.radians(station.longitude - arguments.longitude) / 2) ** 2
-        )
-        distance = 12_742_017.6 * math.asin(math.sqrt(max(0.0, min(1.0, a))))
+        distance = distance_meters(arguments.latitude, arguments.longitude, station)
         if distance <= 91.44:
             expected[status.station_id] = (
                 station.name,

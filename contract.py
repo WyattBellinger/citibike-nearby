@@ -9,10 +9,12 @@ from slimconfig import Output
 
 class Tool(Enum):
     FIND_NEARBY_STATIONS = "find_nearby_stations"
+    GET_LIVE_SNAPSHOT = "get_live_snapshot"
 
 
 class Task(Enum):
     FIND_NEARBY_STATIONS = "find-nearby-stations"
+    FIND_LIVE_STATIONS = "find-live-stations"
 
 
 class SnapshotSource(Enum):
@@ -53,6 +55,22 @@ class NearbyInput(Output):
 
 
 @dataclass
+class LiveInput(Output):
+    longitude: Annotated[float, "Query longitude in WGS84 decimal degrees; query location is in NYC"]
+    latitude: Annotated[float, "Query latitude in WGS84 decimal degrees; query location is in NYC"]
+
+
+@dataclass
+class LiveSnapshotOutput(Output):
+    longitude: float
+    latitude: float
+    snapshot: Annotated[
+        FeedSnapshot,
+        "Captured stations within 100 yards, including closed/empty stations; full feeds retained for verification",
+    ]
+
+
+@dataclass
 class AvailableStation(Output):
     station_id: str
     name: str
@@ -66,5 +84,11 @@ class NearbyOutput(Output):
     stations: Annotated[list[AvailableStation], "All qualifying stations, sorted lexicographically by station_id"]
 
 
-TOOLS = {Tool.FIND_NEARBY_STATIONS: (NearbyInput, NearbyOutput)}
-TASKS = {Task.FIND_NEARBY_STATIONS: (NearbyInput, NearbyOutput)}
+TOOLS = {
+    Tool.FIND_NEARBY_STATIONS: (NearbyInput, NearbyOutput),
+    Tool.GET_LIVE_SNAPSHOT: (LiveInput, LiveSnapshotOutput),
+}
+TASKS = {
+    Task.FIND_NEARBY_STATIONS: (NearbyInput, NearbyOutput),
+    Task.FIND_LIVE_STATIONS: (LiveInput, NearbyOutput),
+}
