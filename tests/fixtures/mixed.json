@@ -1,0 +1,85 @@
+{
+  "longitude": -73.989,
+  "latitude": 40.741,
+  "snapshot": {
+    "source": "synthetic",
+    "information_last_updated": 1793188800,
+    "status_last_updated": 1793188860,
+    "station_information": [
+      {
+        "station_id": "2",
+        "name": "Synthetic origin",
+        "latitude": 40.741,
+        "longitude": -73.989
+      },
+      {
+        "station_id": "10",
+        "name": "Synthetic nearby",
+        "latitude": 40.7413,
+        "longitude": -73.989
+      },
+      {
+        "station_id": "far",
+        "name": "Synthetic outside radius",
+        "latitude": 40.743,
+        "longitude": -73.989
+      },
+      {
+        "station_id": "empty",
+        "name": "Synthetic empty",
+        "latitude": 40.7411,
+        "longitude": -73.989
+      },
+      {
+        "station_id": "closed",
+        "name": "Synthetic rentals closed",
+        "latitude": 40.7412,
+        "longitude": -73.989
+      },
+      {
+        "station_id": "uninstalled",
+        "name": "Synthetic uninstalled",
+        "latitude": 40.7411,
+        "longitude": -73.9891
+      }
+    ],
+    "station_status": [
+      {
+        "station_id": "2",
+        "is_installed": true,
+        "is_renting": true,
+        "num_bikes_available": 1
+      },
+      {
+        "station_id": "10",
+        "is_installed": true,
+        "is_renting": true,
+        "num_bikes_available": 4
+      },
+      {
+        "station_id": "far",
+        "is_installed": true,
+        "is_renting": true,
+        "num_bikes_available": 7
+      },
+      {
+        "station_id": "empty",
+        "is_installed": true,
+        "is_renting": true,
+        "num_bikes_available": 0
+      },
+      {
+        "station_id": "closed",
+        "is_installed": true,
+        "is_renting": false,
+        "num_bikes_available": 3
+      },
+      {
+        "station_id": "uninstalled",
+        "is_installed": false,
+        "is_renting": true,
+        "num_bikes_available": 8
+      }
+    ]
+  }
+}

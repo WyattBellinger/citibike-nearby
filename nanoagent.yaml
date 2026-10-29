@@ -1,0 +1,35 @@
+_ > nanoagent.plugin.v0001.ManifestConfig:
+id: citibike-nearby
+name: NYC Bike Station Finder
+version: 0.1.0
+status: ready
+spec: nanoagent.plugin/v0001
+
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
+  type: mcp_stdio
+  command: [uv, run, --frozen, python, -m, plugin]
+
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
+    hosts: []
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
+    write: []
+
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  find_nearby_stations:
+    description: Find all installed stations renting at least one bike within 100 yards in the supplied snapshot
+
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  find-nearby-stations:
+    description: List every station within 100 yards that is open for rentals and has an available bike
+    runner: tool
+    tools: [find_nearby_stations]
+    reference: null
+    instructions: |-
+      Use only the supplied fixed snapshot and WGS84 longitude and latitude.
+      Join station information and status by station_id. A station is open when
+      is_installed and is_renting are both true, and it must have num_bikes_available >= 1.
+      Include every station whose Haversine distance is <= 91.44 meters, using an Earth
+      radius of 6371008.8 meters without rounding. Return its station_id, name, latitude,
+      longitude and num_bikes_available exactly as supplied, sorted lexicographically by ID.
+      An empty stations list is valid when there are no matches. Invalid snapshots must fail.

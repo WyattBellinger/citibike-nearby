@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: "Find available bike-share stations within 100 yards"
+summary: "Search a fixed Citi Bike station snapshot for every nearby station open for rentals with at least one available bike. Each result is checked against the supplied snapshot."
+highlights:
+  - "An exact 100-yard search with station names, coordinates, and bike counts"
+  - "A fixed snapshot makes the result repeatable"
+  - "Every result is checked for missing stations and incorrect details"
+steps:
+  - "Provide a New York City longitude and latitude and a fixed station snapshot"
+  - "Find every station within 100 yards that is open and has a bike"
+  - "Read the complete station list and its verification result"
